@@ -1,0 +1,95 @@
+name: Daily - Full Regression (develop/dev)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM UTC daily
+  workflow_dispatch:  # Manual trigger option
+
+jobs:
+  daily-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        suite: ['happy-path', 'error-handling', 'idempotency', 'rbac', 'edge-cases']
+      max-parallel: 5
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Full Jest Suite - ${{ matrix.suite }}
+        id: jest-full
+        run: npm run test:${{ matrix.suite }}
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+          NODE_ENV: test
+        continue-on-error: true
+
+      - name: Run Full Newman Suite
+        if: matrix.suite == 'happy-path'
+        run: |
+          npm install -g newman
+          newman run "OS2 Dev - User Mgnt SVC.postman_collection.json" \
+            --environment dev.env.json \
+            --reporters cli,json \
+            --reporter-json-export newman-full-results.json
+        continue-on-error: true
+
+      - name: Database Validation (Full)
+        if: matrix.suite == 'happy-path'
+        run: npm run test:db:full
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+
+      - name: Run k6 Load Baseline
+        if: matrix.suite == 'happy-path'
+        run: |
+          npm install -g k6
+          k6 run scripts/baseline.js \
+            --env=dev \
+            --out json=k6-baseline.json
+        continue-on-error: true
+
+      - name: Generate HTML Report
+        if: always()
+        run: npm run report:generate
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: regression-develop-${{ matrix.suite }}
+          path: |
+            test-report.html
+            coverage/
+            junit.xml
+            newman-full-results.json
+            k6-baseline.json
+          retention-days: 30
+
+      - name: Slack Daily Summary (2 AM)
+        if: always() && matrix.suite == 'rbac'
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          payload: |
+            {
+              "text": "📊 Daily Regression Report - develop/dev",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Daily Regression Results*\n*Date:* ${{ github.event.head_commit.timestamp }}\n*Branch:* develop\n*Environment:* dev.user-mgmt.greenwheels.africa\n*Status:* ${{ steps.jest-full.outcome == 'success' && '✅ All Passed' || '⚠️ Some Failed' }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Full Report>"
+                  }
+                }
+              ]
+            }

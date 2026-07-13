@@ -1,0 +1,102 @@
+name: Merge to develop - Full Test Suite
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'tests/**'
+      - 'src/**'
+
+jobs:
+  full-test-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        suite: ['happy-path', 'error-handling', 'idempotency', 'rbac']
+      max-parallel: 4
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Jest Suite - ${{ matrix.suite }}
+        id: jest-test
+        run: npm run test:${{ matrix.suite }}
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+          NODE_ENV: test
+
+      - name: Run Newman (Postman Collection)
+        if: matrix.suite == 'happy-path'
+        run: |
+          npm install -g newman
+          newman run "OS2 Dev - User Mgnt SVC.postman_collection.json" \
+            --environment dev.env.json \
+            --reporters cli,json \
+            --reporter-json-export newman-results.json
+        continue-on-error: true
+
+      - name: Database Integrity Check
+        if: matrix.suite == 'happy-path'
+        run: npm run test:db:integrity
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: full-test-results-${{ matrix.suite }}
+          path: |
+            coverage/
+            junit.xml
+            newman-results.json
+          retention-days: 7
+
+      - name: Slack Notification (Success)
+        if: success() && matrix.suite == 'rbac'
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          payload: |
+            {
+              "text": "✅ develop - Full Suite Passed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Merge to develop - All Tests Passed ✅*\n*Commit:* ${{ github.event.head_commit.message }}\n*Author:* @${{ github.event.head_commit.author.name }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Results>"
+                  }
+                }
+              ]
+            }
+
+      - name: Slack Notification (Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          payload: |
+            {
+              "text": "❌ develop - Full Suite Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Merge to develop - Tests Failed ❌*\n*Suite:* ${{ matrix.suite }}\n*Commit:* ${{ github.event.head_commit.message }}\n*Author:* @${{ github.event.head_commit.author.name }}\n*Action:* Review & consider revert\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
+                  }
+                }
+              ]
+            }
+
+

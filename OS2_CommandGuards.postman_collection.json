@@ -1,0 +1,501 @@
+{
+  "info": {
+    "name": "OS2 Command Guards — CI/CD Smoke Gate",
+    "_postman_id": "os2-command-guards-v1",
+    "description": "GraphQL command-level authorization guard tests. All requests go through Apollo Router.\nCovers: RBAC-04, RBAC-09, RBAC-10, CON-04, CON-06, CON-09, AR-04, AR-05, FLT-03, FLT-05, FLT-07.\nRun via Newman in CI: newman run OS2_CommandGuards.postman_collection.json --env-var APOLLO_ROUTER_URL=$APOLLO_ROUTER_URL\nGate: Every PR (smoke suite) and full regression.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "APOLLO_ROUTER_URL", "value": "{{APOLLO_ROUTER_URL}}" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{JWT_ACTIVE_SESSION}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level pre-request: ensure APOLLO_ROUTER_URL is set",
+          "if (!pm.environment.get('APOLLO_ROUTER_URL')) {",
+          "  throw new Error('APOLLO_ROUTER_URL environment variable is not set');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "RBAC Guards",
+      "item": [
+        {
+          "name": "[RBAC-04] Missing role — contract.activate returns 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP status is 200 (GraphQL envelope)', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('GraphQL errors array is present', function() {",
+                  "  pm.expect(body).to.have.property('errors');",
+                  "  pm.expect(body.errors).to.be.an('array').with.length.above(0);",
+                  "});",
+                  "pm.test('Error code is FORBIDDEN (403)', function() {",
+                  "  const err = body.errors[0];",
+                  "  pm.expect(err.extensions.code).to.eq('FORBIDDEN');",
+                  "  pm.expect(err.extensions.http.status).to.eq(403);",
+                  "});",
+                  "pm.test('data.activateContract is null', function() {",
+                  "  pm.expect(body.data.activateContract).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_ACQUISITION_ASSOCIATE}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation ActivateContract($contractId: ID!) { activateContract(contractId: $contractId) { id status } }\", \"variables\": { \"contractId\": \"QA-CONTRACT-GUARD-001\" } }"
+            }
+          }
+        },
+        {
+          "name": "[RBAC-09] Human user cannot impersonate system.scheduler — billing run returns 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('HTTP status 200 (GraphQL envelope)', function() { pm.response.to.have.status(200); });",
+                  "pm.test('FORBIDDEN error returned', function() {",
+                  "  pm.expect(body.errors[0].extensions.code).to.eq('FORBIDDEN');",
+                  "  pm.expect(body.errors[0].extensions.http.status).to.eq(403);",
+                  "});",
+                  "pm.test('data.runBillingCycle is null', function() {",
+                  "  pm.expect(body.data.runBillingCycle).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_FINANCE_OPS_MANAGER}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation RunBillingCycle($cycleDate: String!) { runBillingCycle(cycleDate: $cycleDate) { cycleId status contractsProcessed } }\", \"variables\": { \"cycleDate\": \"2026-07-07\" } }"
+            }
+          }
+        },
+        {
+          "name": "[RBAC-10] Customer role cannot query another customer's projection",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('HTTP status 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('customer data is null or FORBIDDEN', function() {",
+                  "  const result = body.data && body.data.customer;",
+                  "  const isForbidden = body.errors && body.errors[0].extensions.code === 'FORBIDDEN';",
+                  "  pm.expect(result === null || isForbidden).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_CUSTOMER_PORTAL}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"query GetCustomer($customerId: ID!) { customer(id: $customerId) { id fullName contractStatus outstandingBalance } }\", \"variables\": { \"customerId\": \"CUST-QA-OTHER-001\" } }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Billing & Contract Guards",
+      "item": [
+        {
+          "name": "[CON-06] Terminate contract without vehicle return is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('HTTP 200 (GraphQL envelope)', function() { pm.response.to.have.status(200); });",
+                  "pm.test('FORBIDDEN or PRECONDITION_FAILED error returned', function() {",
+                  "  const code = body.errors[0].extensions.code;",
+                  "  pm.expect(['FORBIDDEN', 'PRECONDITION_FAILED', 'BAD_USER_INPUT']).to.include(code);",
+                  "});",
+                  "pm.test('terminateContract is null', function() {",
+                  "  pm.expect(body.data.terminateContract).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_CUSTOMER_OPS_MANAGER}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation TerminateContract($contractId: ID!, $reason: String!) { terminateContract(contractId: $contractId, reason: $reason) { id status } }\", \"variables\": { \"contractId\": \"QA-CONTRACT-NO-RETURN-001\", \"reason\": \"QA Guard Test\" } }"
+            }
+          }
+        },
+        {
+          "name": "[CON-09] Billing run rejected for non-scheduler role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('FORBIDDEN returned for collections.associate', function() {",
+                  "  pm.expect(body.errors[0].extensions.code).to.eq('FORBIDDEN');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_COLLECTIONS_ASSOCIATE}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation RunBillingCycle($cycleDate: String!) { runBillingCycle(cycleDate: $cycleDate) { cycleId } }\", \"variables\": { \"cycleDate\": \"2026-07-07\" } }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AR Ledger & Collections Guards",
+      "item": [
+        {
+          "name": "[AR-04] Immobilise vehicle blocked by active save attempt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('HTTP 200', function() { pm.response.to.have.status(200); });",
+                  "pm.test('immobilisation rejected — save attempt active', function() {",
+                  "  const code = body.errors[0].extensions.code;",
+                  "  pm.expect(['FORBIDDEN', 'PRECONDITION_FAILED']).to.include(code);",
+                  "  pm.expect(body.data.immobiliseVehicle).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_COLLECTIONS_SUPERVISOR}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation ImmobiliseVehicle($vehicleId: ID!, $reason: String!) { immobiliseVehicle(vehicleId: $vehicleId, reason: $reason) { id status } }\", \"variables\": { \"vehicleId\": \"VEH-QA-SAVE-ACTIVE-001\", \"reason\": \"QA Guard Test\" } }"
+            }
+          }
+        },
+        {
+          "name": "[AR-05a] Release vehicle at 79% balance cleared — rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('release rejected at 79% balance cleared', function() {",
+                  "  const code = body.errors[0].extensions.code;",
+                  "  pm.expect(['FORBIDDEN', 'PRECONDITION_FAILED', 'BAD_USER_INPUT']).to.include(code);",
+                  "  pm.expect(body.data.releaseVehicle).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_COLLECTIONS_ASSOCIATE}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation ReleaseVehicle($vehicleId: ID!) { releaseVehicle(vehicleId: $vehicleId) { id status } }\", \"variables\": { \"vehicleId\": \"VEH-QA-79PCT-001\" } }"
+            }
+          }
+        },
+        {
+          "name": "[AR-05b] Release vehicle at exactly 80% balance cleared — succeeds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors at 80% balance cleared', function() {",
+                  "  pm.expect(body.errors).to.be.undefined;",
+                  "});",
+                  "pm.test('vehicle release recorded', function() {",
+                  "  pm.expect(body.data.releaseVehicle).to.not.be.null;",
+                  "  pm.expect(body.data.releaseVehicle.status).to.eq('RELEASED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_COLLECTIONS_ASSOCIATE}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation ReleaseVehicle($vehicleId: ID!) { releaseVehicle(vehicleId: $vehicleId) { id status } }\", \"variables\": { \"vehicleId\": \"VEH-QA-80PCT-001\" } }"
+            }
+          }
+        },
+        {
+          "name": "[AR-07] Write-off above KES 30,000 requires dual approval",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('single approval rejected for write-off > KES 30,000', function() {",
+                  "  const code = body.errors[0].extensions.code;",
+                  "  pm.expect(['FORBIDDEN', 'PRECONDITION_FAILED']).to.include(code);",
+                  "  pm.expect(body.data.writeOffLedger).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_FINANCE_OPS_MANAGER}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation WriteOffLedger($invoiceId: ID!, $amount: Float!, $reason: String!) { writeOffLedger(invoiceId: $invoiceId, amount: $amount, reason: $reason) { id status } }\", \"variables\": { \"invoiceId\": \"INV-QA-WRITEOFF-001\", \"amount\": 35000, \"reason\": \"QA Guard Test — single approval\" } }"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fleet & Maintenance Guards",
+      "item": [
+        {
+          "name": "[FLT-03] Maintenance approval above threshold rejected for fleet associate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('FORBIDDEN for fleet associate on high-cost maintenance', function() {",
+                  "  pm.expect(body.errors[0].extensions.code).to.eq('FORBIDDEN');",
+                  "  pm.expect(body.data.approveMaintenance).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_FLEET_OPS_ASSOCIATE}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation ApproveMaintenance($jobId: ID!) { approveMaintenance(jobId: $jobId) { id status approvedBy } }\", \"variables\": { \"jobId\": \"JOB-QA-HIGH-COST-001\" } }"
+            }
+          }
+        },
+        {
+          "name": "[FLT-05a] Collections associate cannot initiate repossession — 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('FORBIDDEN for collections.associate on repossession', function() {",
+                  "  pm.expect(body.errors[0].extensions.code).to.eq('FORBIDDEN');",
+                  "  pm.expect(body.data.initiateRepossession).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_COLLECTIONS_ASSOCIATE}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation InitiateRepossession($contractId: ID!, $reason: String!) { initiateRepossession(contractId: $contractId, reason: $reason) { id status } }\", \"variables\": { \"contractId\": \"QA-CONTRACT-REPO-001\", \"reason\": \"QA Guard Test\" } }"
+            }
+          }
+        },
+        {
+          "name": "[FLT-05b] Collections manager can initiate repossession — succeeds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors for collections.manager', function() {",
+                  "  pm.expect(body.errors).to.be.undefined;",
+                  "});",
+                  "pm.test('repossession_initiated_facts written', function() {",
+                  "  pm.expect(body.data.initiateRepossession).to.not.be.null;",
+                  "  pm.expect(body.data.initiateRepossession.status).to.eq('REPOSSESSION_INITIATED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_COLLECTIONS_MANAGER}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation InitiateRepossession($contractId: ID!, $reason: String!) { initiateRepossession(contractId: $contractId, reason: $reason) { id status } }\", \"variables\": { \"contractId\": \"QA-CONTRACT-REPO-001\", \"reason\": \"QA Guard Test — Manager\" } }"
+            }
+          }
+        },
+        {
+          "name": "[FLT-07a] Vehicle write-off rejected for fleet supervisor alone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('FORBIDDEN — fleet supervisor alone is insufficient for vehicle write-off', function() {",
+                  "  pm.expect(body.errors[0].extensions.code).to.eq('FORBIDDEN');",
+                  "  pm.expect(body.data.writeOffVehicle).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_FLEET_OPS_SUPERVISOR}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation WriteOffVehicle($vehicleId: ID!, $reason: String!) { writeOffVehicle(vehicleId: $vehicleId, reason: $reason) { id status } }\", \"variables\": { \"vehicleId\": \"VEH-QA-WRITEOFF-001\", \"reason\": \"QA Guard Test — single approval\" } }"
+            }
+          }
+        },
+        {
+          "name": "[FLT-07b] Vehicle write-off rejected for finance manager alone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('FORBIDDEN — finance_ops.manager alone is insufficient for vehicle write-off', function() {",
+                  "  pm.expect(body.errors[0].extensions.code).to.eq('FORBIDDEN');",
+                  "  pm.expect(body.data.writeOffVehicle).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{JWT_FINANCE_OPS_MANAGER}}" }
+            ],
+            "url": { "raw": "{{APOLLO_ROUTER_URL}}/graphql", "host": ["{{APOLLO_ROUTER_URL}}"], "path": ["graphql"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"query\": \"mutation WriteOffVehicle($vehicleId: ID!, $reason: String!) { writeOffVehicle(vehicleId: $vehicleId, reason: $reason) { id status } }\", \"variables\": { \"vehicleId\": \"VEH-QA-WRITEOFF-001\", \"reason\": \"QA Guard Test — single approval\" } }"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1423 @@
+{
+  "info": {
+    "_postman_id": "gw-user-mgmt-l1-tests",
+    "name": "OS2 User Management Service — L1 API Tests",
+    "description": "Layer 1: API Testing for gw-user-mgmt-svc\n\nComprehensive endpoint validation:\n- Happy path (14 endpoints)\n- Error boundary tests (400, 401, 403, 404, 422)\n- Idempotency validation\n- Schema assertions\n\nExecution: newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup & Cleanup",
+      "item": [
+        {
+          "name": "Setup — Get Admin Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has token', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('token');",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.environment.set('admin_token', response.token);",
+                  "pm.collectionVariables.set('admin_jwt', response.token);",
+                  "",
+                  "pm.test('Extract JWT claims', function() {",
+                  "    const parts = response.token.split('.');",
+                  "    const payload = JSON.parse(atob(parts[1]));",
+                  "    pm.expect(payload).to.have.property('sub');",
+                  "    pm.expect(payload).to.have.property('roles');",
+                  "    pm.expect(payload.roles).to.include('tech.admin.manager');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\":\"{{admin_phone}}\",\n    \"password\":\"{{admin_password}}\",\n    \"otp\":\"{{mocked_otp}}\",\n    \"context_id\":\"{{context_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/token",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "L1.1 — Happy Path (14 Endpoints)",
+      "item": [
+        {
+          "name": "HAPPY-001 — Create User via Odoo Webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('user_id');",
+                  "    pm.expect(response).to.have.property('status');",
+                  "    pm.expect(response).to.have.property('phone');",
+                  "});",
+                  "",
+                  "pm.test('user_id is valid UUID', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.user_id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "",
+                  "pm.test('User status is created (inactive)', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.equal('created');",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.environment.set('created_user_id', response.user_id);",
+                  "pm.collectionVariables.set('webhook_user_id', response.user_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"odoo_employee_id\":\"12345\",\n    \"name\":\"Amos Njenga\",\n    \"email\":\"amos.njenga@greenwheels.africa\",\n    \"phone\":\"+254745574941\",\n    \"job_title\": \"Tech Lead\",\n    \"department\": \"Tech\",\n    \"national_id\": \"32586196\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/webhooks/odoo/staff",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "odoo",
+                "staff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-002 — Provision User via Admin Command",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('user_id');",
+                  "    pm.expect(response).to.have.property('status');",
+                  "});",
+                  "",
+                  "pm.test('user_id is valid UUID', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.user_id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "",
+                  "pm.test('User status is created (inactive)', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.equal('created');",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('provision_user_id', response.user_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:provision:5678-{{$randomInt}}\",\n    \"odoo_employee_id\":\"5678\",\n    \"name\":\"John Doe\",\n    \"email\":\"john.doe@greenwheels.africa\",\n    \"phone\":\"+254746774941\",\n    \"job_title\": \"Customer Support Associate\",\n    \"department\": \"Customer Ops\",\n    \"national_id\": \"678907654\",\n    \"user_type\":\"staff\",\n    \"initial_password\": \"temp-pass-5678\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/provision",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "provision"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-003 — Activate User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('user_id');",
+                  "    pm.expect(response).to.have.property('status');",
+                  "});",
+                  "",
+                  "pm.test('User status is active', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.equal('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:activate:staff:5678\",\n    \"user_id\":\"{{provision_user_id}}\",\n    \"new_password\": \"temp-pass-1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/activate",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-004 — Assign Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('user_id');",
+                  "    pm.expect(response).to.have.property('roles');",
+                  "});",
+                  "",
+                  "pm.test('Role assigned correctly', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.roles).to.be.an('array');",
+                  "    pm.expect(response.roles).to.include('tech.admin.manager');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:role:+254746774941:tech.admin.manager\",\n    \"user_id\":\"{{provision_user_id}}\",\n    \"role_string\": \"tech.admin.manager\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/assign-role",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "assign-role"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-005 — Request OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('status');",
+                  "    pm.expect(response.status).to.equal('success');",
+                  "});",
+                  "",
+                  "pm.test('OTP not in response body (sent via SMS)', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.not.have.property('otp');",
+                  "    pm.expect(response).to.not.have.property('code');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\":\"+254746774941\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/request-otp",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "request-otp"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-006 — Request Token (Login)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has token', function() {",
+                  "    pm.expect(pm.response.json()).to.have.property('token');",
+                  "});",
+                  "",
+                  "pm.test('Token is valid RS256 JWT', function() {",
+                  "    const response = pm.response.json();",
+                  "    const parts = response.token.split('.');",
+                  "    pm.expect(parts.length).to.equal(3);",
+                  "    pm.expect(parts[0]).to.equal('eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9' || true);",
+                  "});",
+                  "",
+                  "pm.test('JWT payload contains required claims', function() {",
+                  "    const response = pm.response.json();",
+                  "    const parts = response.token.split('.');",
+                  "    const payload = JSON.parse(atob(parts[1]));",
+                  "    pm.expect(payload).to.have.property('sub');",
+                  "    pm.expect(payload).to.have.property('roles');",
+                  "    pm.expect(payload).to.have.property('context_id');",
+                  "    pm.expect(payload).to.have.property('user_type');",
+                  "    pm.expect(payload).to.have.property('exp');",
+                  "});",
+                  "",
+                  "pm.test('JWT exp is 1 hour from now', function() {",
+                  "    const response = pm.response.json();",
+                  "    const parts = response.token.split('.');",
+                  "    const payload = JSON.parse(atob(parts[1]));",
+                  "    const now = Math.floor(Date.now() / 1000);",
+                  "    const diff = payload.exp - payload.iat;",
+                  "    pm.expect(diff).to.be.closeTo(3600, 10);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.environment.set('test_user_token', response.token);",
+                  "const parts = response.token.split('.');",
+                  "const payload = JSON.parse(atob(parts[1]));",
+                  "pm.collectionVariables.set('test_jwt_jti', payload.jti);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\":\"+254746774941\",\n    \"password\":\"temp-pass-1234\",\n    \"otp\":\"{{mocked_otp}}\",\n    \"context_id\":\"{{context_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/token",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-007 — Fetch User Claims (/me)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('sub');",
+                  "    pm.expect(response).to.have.property('roles');",
+                  "    pm.expect(response).to.have.property('context_id');",
+                  "    pm.expect(response).to.have.property('user_type');",
+                  "});",
+                  "",
+                  "pm.test('Claims match token payload', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.context_id).to.equal('{{context_id}}');",
+                  "    pm.expect(response.user_type).to.equal('staff');",
+                  "    pm.expect(response.roles).to.be.an('array');",
+                  "    pm.expect(response.roles).to.include('tech.admin.manager');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{test_user_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/me",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-008 — List All Users (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is array', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('User objects have required fields', function() {",
+                  "    const response = pm.response.json();",
+                  "    if (response.length > 0) {",
+                  "        const user = response[0];",
+                  "        pm.expect(user).to.have.property('id');",
+                  "        pm.expect(user).to.have.property('phone');",
+                  "        pm.expect(user).to.have.property('email');",
+                  "        pm.expect(user).to.have.property('status');",
+                  "        pm.expect(user).to.have.property('roles');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/users",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-009 — Fetch User by ID (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('id');",
+                  "    pm.expect(response).to.have.property('phone');",
+                  "    pm.expect(response).to.have.property('email');",
+                  "    pm.expect(response).to.have.property('status');",
+                  "    pm.expect(response).to.have.property('roles');",
+                  "});",
+                  "",
+                  "pm.test('User ID matches path parameter', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.id).to.equal(pm.collectionVariables.get('provision_user_id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/users/{{provision_user_id}}",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{provision_user_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-010 — Change Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('status');",
+                  "    pm.expect(response.status).to.equal('success');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{test_user_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\":\"user:password:change:+254746774941\",\n    \"old_password\": \"temp-pass-1234\",\n    \"new_password\":\"new-secure-pass-5678\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/change-password",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "change-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-011 — Reset Password (OTP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('status');",
+                  "    pm.expect(response.status).to.equal('success');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"user:password:reset:+254700000003\",\n    \"phone\": \"+254700000003\",\n    \"otp\":\"{{mocked_otp}}\",\n    \"new_password\":\"dev-driver-pass-new\",\n    \"context_id\":\"{{context_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/reset-password",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "reset-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-012 — Deactivate User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('user_id');",
+                  "    pm.expect(response).to.have.property('status');",
+                  "});",
+                  "",
+                  "pm.test('User status is deactivated', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.equal('deactivated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:deactivate:staff:5678\",\n    \"user_id\":\"{{provision_user_id}}\",\n    \"reason\": \"Testing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/deactivate",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "deactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-013 — Revoke Token by JTI",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('status');",
+                  "    pm.expect(response.status).to.equal('success');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"jti\": \"{{test_jwt_jti}}\",\n    \"reason\":\"Testing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/token/revoke",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "token",
+                "revoke"
+              ]
+            }
+          }
+        },
+        {
+          "name": "HAPPY-014 — Fetch JWKS Public Keys",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response schema valid', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('keys');",
+                  "    pm.expect(response.keys).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('JWKS keys have required properties', function() {",
+                  "    const response = pm.response.json();",
+                  "    if (response.keys.length > 0) {",
+                  "        const key = response.keys[0];",
+                  "        pm.expect(key).to.have.property('kty');",
+                  "        pm.expect(key).to.have.property('use');",
+                  "        pm.expect(key).to.have.property('kid');",
+                  "        pm.expect(key).to.have.property('n');",
+                  "        pm.expect(key).to.have.property('e');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/.well-known/jwks.json",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                ".well-known",
+                "jwks.json"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "L1.2 — Error Cases (Boundary Tests)",
+      "item": [
+        {
+          "name": "ERROR-001 — Missing Required Field (phone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function() {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "    pm.expect(response.error.toLowerCase()).to.include('phone');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"odoo_employee_id\":\"99999\",\n    \"name\":\"Test User\",\n    \"email\":\"test@greenwheels.africa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/webhooks/odoo/staff",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "odoo",
+                "staff"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-002 — Invalid Phone Format",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function() {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\":\"invalid-phone\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/request-otp",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "request-otp"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-003 — Non-Admin Provisions User (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403 Forbidden', function() {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{test_user_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:provision:9999\",\n    \"odoo_employee_id\":\"9999\",\n    \"name\":\"Unauthorized User\",\n    \"email\":\"unauthorized@greenwheels.africa\",\n    \"phone\":\"+254700000099\",\n    \"user_type\":\"staff\",\n    \"initial_password\": \"temp-pass\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/provision",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "provision"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-004 — Activate Non-Existent User (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function() {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:activate:staff:nonexistent\",\n    \"user_id\":\"00000000-0000-0000-0000-000000000000\",\n    \"new_password\": \"temp-pass\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/activate",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-005 — Wrong OTP (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 Unauthorized', function() {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "    pm.expect(response.error.toLowerCase()).to.include('otp');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\":\"+254746774941\",\n    \"password\":\"temp-pass-1234\",\n    \"otp\":\"000000\",\n    \"context_id\":\"{{context_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/token",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-006 — Missing context_id (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function() {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\":\"+254746774941\",\n    \"password\":\"temp-pass-1234\",\n    \"otp\":\"{{mocked_otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/auth/token",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-007 — Expired or Invalid Token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 Unauthorized', function() {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkludmFsaWQiLCJpYXQiOjE1MTYyMzkwMjJ9.invalid-signature",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/me",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR-008 — Non-Admin Lists Users (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403 Forbidden', function() {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{test_user_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/users",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "L1.3 — Idempotency Tests",
+      "item": [
+        {
+          "name": "IDMP-001 — Provision User: Idempotent Key Deduplicates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('First call: Status code is 201', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('idmp_user_id_1', response.user_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:provision:IDMP-001-unique\",\n    \"odoo_employee_id\":\"IDMP-001\",\n    \"name\":\"Idempotency Test 001\",\n    \"email\":\"idmp-001@greenwheels.africa\",\n    \"phone\":\"+254700000111\",\n    \"user_type\":\"staff\",\n    \"initial_password\": \"temp-pass\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/provision",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "provision"
+              ]
+            }
+          }
+        },
+        {
+          "name": "IDMP-001b — Retry Provision: Same Key Returns Same User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retry call: Status code is 200 OK (idempotent)', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returned user_id matches first call', function() {",
+                  "    const response = pm.response.json();",
+                  "    const firstUserId = pm.collectionVariables.get('idmp_user_id_1');",
+                  "    pm.expect(response.user_id).to.equal(firstUserId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"system:provision:IDMP-001-unique\",\n    \"odoo_employee_id\":\"IDMP-001\",\n    \"name\":\"Idempotency Test 001\",\n    \"email\":\"idmp-001@greenwheels.africa\",\n    \"phone\":\"+254700000111\",\n    \"user_type\":\"staff\",\n    \"initial_password\": \"temp-pass\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{user_svc_base_url}}/api/v1/commands/user/provision",
+              "host": [
+                "{{user_svc_base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "commands",
+                "user",
+                "provision"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "admin_jwt",
+      "value": ""
+    },
+    {
+      "key": "webhook_user_id",
+      "value": ""
+    },
+    {
+      "key": "provision_user_id",
+      "value": ""
+    },
+    {
+      "key": "test_jwt_jti",
+      "value": ""
+    },
+    {
+      "key": "idmp_user_id_1",
+      "value": ""
+    }
+  ]
+}

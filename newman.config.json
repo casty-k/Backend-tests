@@ -1,0 +1,38 @@
+{
+  "reporters": {
+    "cli": {
+      "silent": false
+    },
+    "json": {
+      "export": "results/l1-api-results.json"
+    },
+    "html": {
+      "export": "results/l1-api-results.html"
+    }
+  },
+  "collection": "OS2-User-Mgmt-L1-API-Tests.postman_collection.json",
+  "environment": "env.dev.json",
+  "globals": {},
+  "insecure": false,
+  "timeout": 10000,
+  "timeoutRequest": 5000,
+  "timeoutScript": 5000,
+  "delayRequest": 0,
+  "stopOnError": false,
+  "stopOnFailure": false,
+  "bail": false,
+  "verbose": false,
+  "suppressExitCode": false,
+  "color": "auto",
+  "sslClientCert": null,
+  "sslClientKey": null,
+  "sslCACert": null,
+  "sslStrict": true,
+  "sslInsecure": false,
+  "ignoreRedirects": false,
+  "workingDir": ".",
+  "exportGlobals": null,
+  "exportEnvironment": null,
+  "exportPostmanGlobals": null,
+  "exportPostmanEnvironments": null
+}

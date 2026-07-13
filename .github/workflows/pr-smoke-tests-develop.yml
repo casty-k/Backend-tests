@@ -1,0 +1,82 @@
+
+name: PR to develop - Smoke Tests
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'tests/**'
+      - 'src/**'
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Jest Smoke Tests (dev env)
+        id: smoke
+        run: npm run test:smoke
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+          NODE_ENV: test
+        continue-on-error: true
+
+      - name: Database Schema Validation
+        run: npm run test:schema:validate
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: smoke-test-results-pr
+          path: coverage/
+          retention-days: 5
+
+      - name: Comment PR with Results
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 🧪 Smoke Tests Results\n';
+            comment += steps.smoke.outcome === 'success'
+              ? '✅ **PASSED** - Ready for review'
+              : '❌ **FAILED** - Fix issues before merge';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Slack Notification (Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          payload: |
+            {
+              "text": "❌ PR #${{ github.event.pull_request.number }} - Smoke Tests Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*PR to develop - Smoke Tests Failed*\n*Author:* @${{ github.actor }}\n*Branch:* ${{ github.event.pull_request.head.ref }}\n<${{ github.event.pull_request.html_url }}|View PR> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Test Details>"
+                  }
+                }
+              ]
+            }

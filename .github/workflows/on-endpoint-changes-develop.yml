@@ -1,0 +1,98 @@
+name: Endpoint Changes - Targeted Tests
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'src/api/v1/**'
+
+jobs:
+  detect-affected:
+    runs-on: ubuntu-latest
+    outputs:
+      affected-endpoints: ${{ steps.detect.outputs.endpoints }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Detect Changed Endpoints
+        id: detect
+        run: |
+          CHANGED=$(git diff origin/develop --name-only | grep -E 'src/api/v1' | tr '\n' ',' || echo "")
+          echo "endpoints=$CHANGED" >> $GITHUB_OUTPUT
+          echo "Changed files: $CHANGED"
+
+  endpoint-tests:
+    needs: detect-affected
+    runs-on: ubuntu-latest
+    if: needs.detect-affected.outputs.affected-endpoints != ''
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Tests for Affected Endpoints
+        id: targeted
+        run: |
+          echo "Testing affected endpoints: ${{ needs.detect-affected.outputs.affected-endpoints }}"
+          npm run test:targeted -- --endpoints="${{ needs.detect-affected.outputs.affected-endpoints }}"
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+        continue-on-error: true
+
+      - name: Backward Compatibility Check
+        run: npm run test:compat
+        env:
+          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: endpoint-test-results
+          path: coverage/
+          retention-days: 5
+
+      - name: Comment PR - Endpoint Tests
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let comment = '## 🔧 Endpoint Tests\n';
+            comment += '${{ steps.targeted.outcome }}' === 'success'
+              ? '✅ **All affected endpoints tested - PASS**'
+              : '❌ **Endpoint tests FAILED - Fix required**';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Slack Notification (Endpoint Test Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          payload: |
+            {
+              "text": "⚠️ Endpoint Tests Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Endpoint Changes Detected - Tests Failed*\n*PR:* #${{ github.event.pull_request.number }}\n*Author:* @${{ github.actor }}\n*Affected:* ${{ needs.detect-affected.outputs.affected-endpoints }}\n<${{ github.event.pull_request.html_url }}|View PR>"
+                  }
+                }
+              ]
+            }

@@ -1,97 +1,74 @@
-name: Endpoint Changes - Targeted Tests
+name: PR - Collection Change Tests
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [main]
     paths:
-      - 'src/api/v1/**'
+      - 'OS2-User-Mgmt-L1-API-Tests.postman_collection.json'
+      - 'OS2_CommandGuards.postman_collection.json'
+      - 'env.dev.json'
+      - 'newman.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'run-tests.sh'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  detect-affected:
+  collection-tests:
     runs-on: ubuntu-latest
-    outputs:
-      affected-endpoints: ${{ steps.detect.outputs.endpoints }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect Changed Endpoints
-        id: detect
-        run: |
-          CHANGED=$(git diff origin/develop --name-only | grep -E 'src/api/v1' | tr '\n' ',' || echo "")
-          echo "endpoints=$CHANGED" >> $GITHUB_OUTPUT
-          echo "Changed files: $CHANGED"
-
-  endpoint-tests:
-    needs: detect-affected
-    runs-on: ubuntu-latest
-    if: needs.detect-affected.outputs.affected-endpoints != ''
+    timeout-minutes: 30
+    env:
+      SLACK_WEBHOOK_QA: ${{ secrets.SLACK_WEBHOOK_QA }}
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: npm
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run Tests for Affected Endpoints
-        id: targeted
+      - name: Validate collection JSON
         run: |
-          echo "Testing affected endpoints: ${{ needs.detect-affected.outputs.affected-endpoints }}"
-          npm run test:targeted -- --endpoints="${{ needs.detect-affected.outputs.affected-endpoints }}"
+          node -e "JSON.parse(require('fs').readFileSync('OS2-User-Mgmt-L1-API-Tests.postman_collection.json', 'utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('env.dev.json', 'utf8'))"
+
+      - name: Run full collection tests
+        run: npm test
         env:
           API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
-        continue-on-error: true
+          NODE_ENV: test
 
-      - name: Backward Compatibility Check
-        run: npm run test:compat
-        env:
-          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
-
-      - name: Upload Results
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: endpoint-test-results
-          path: coverage/
+          name: collection-change-results
+          path: results/
+          if-no-files-found: ignore
           retention-days: 5
 
-      - name: Comment PR - Endpoint Tests
-        if: always()
-        uses: actions/github-script@v6
-        with:
-          script: |
-            let comment = '## 🔧 Endpoint Tests\n';
-            comment += '${{ steps.targeted.outcome }}' === 'success'
-              ? '✅ **All affected endpoints tested - PASS**'
-              : '❌ **Endpoint tests FAILED - Fix required**';
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-
-      - name: Slack Notification (Endpoint Test Failure)
-        if: failure()
+      - name: Slack notification on failure
+        if: failure() && env.SLACK_WEBHOOK_QA != ''
         uses: slackapi/slack-github-action@v1
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          webhook-url: ${{ env.SLACK_WEBHOOK_QA }}
           payload: |
             {
-              "text": "⚠️ Endpoint Tests Failed",
+              "text": "Collection change tests failed",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Endpoint Changes Detected - Tests Failed*\n*PR:* #${{ github.event.pull_request.number }}\n*Author:* @${{ github.actor }}\n*Affected:* ${{ needs.detect-affected.outputs.affected-endpoints }}\n<${{ github.event.pull_request.html_url }}|View PR>"
+                    "text": "*Collection change tests failed*\n*Author:* @${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View details>"
                   }
                 }
               ]

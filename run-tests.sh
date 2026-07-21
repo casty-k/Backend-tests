@@ -7,7 +7,7 @@
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-COLLECTION="${SCRIPT_DIR}/OS2-User-Mgnt-L1-API-Tests.postman_collection.json"
+COLLECTION="${SCRIPT_DIR}/OS2-User-Mgmt-L1-API-Tests.postman_collection.json"
 ENVIRONMENT="${SCRIPT_DIR}/env.dev.json"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -55,9 +55,8 @@ run_all_tests() {
 
     newman run "${COLLECTION}" \
         --environment "${ENVIRONMENT}" \
-        --reporters cli,json,html \
-        --reporter-json-export "${RESULTS_DIR}/l1-api-all-${TIMESTAMP}.json" \
-        --reporter-html-export "${RESULTS_DIR}/l1-api-all-${TIMESTAMP}.html"
+        --reporters cli,json \
+        --reporter-json-export "${RESULTS_DIR}/l1-api-all-${TIMESTAMP}.json"
 
     check_results "${RESULTS_DIR}/l1-api-all-${TIMESTAMP}.json"
 }
@@ -70,9 +69,8 @@ run_happy_path() {
     newman run "${COLLECTION}" \
         --environment "${ENVIRONMENT}" \
         --folder "L1.1 — Happy Path (14 Endpoints)" \
-        --reporters cli,json,html \
-        --reporter-json-export "${RESULTS_DIR}/l1-api-happy-${TIMESTAMP}.json" \
-        --reporter-html-export "${RESULTS_DIR}/l1-api-happy-${TIMESTAMP}.html"
+        --reporters cli,json \
+        --reporter-json-export "${RESULTS_DIR}/l1-api-happy-${TIMESTAMP}.json"
 
     check_results "${RESULTS_DIR}/l1-api-happy-${TIMESTAMP}.json"
 }
@@ -85,9 +83,8 @@ run_error_cases() {
     newman run "${COLLECTION}" \
         --environment "${ENVIRONMENT}" \
         --folder "L1.2 — Error Cases (Boundary Tests)" \
-        --reporters cli,json,html \
-        --reporter-json-export "${RESULTS_DIR}/l1-api-errors-${TIMESTAMP}.json" \
-        --reporter-html-export "${RESULTS_DIR}/l1-api-errors-${TIMESTAMP}.html"
+        --reporters cli,json \
+        --reporter-json-export "${RESULTS_DIR}/l1-api-errors-${TIMESTAMP}.json"
 
     check_results "${RESULTS_DIR}/l1-api-errors-${TIMESTAMP}.json"
 }
@@ -100,9 +97,8 @@ run_idempotency() {
     newman run "${COLLECTION}" \
         --environment "${ENVIRONMENT}" \
         --folder "L1.3 — Idempotency Tests" \
-        --reporters cli,json,html \
-        --reporter-json-export "${RESULTS_DIR}/l1-api-idmp-${TIMESTAMP}.json" \
-        --reporter-html-export "${RESULTS_DIR}/l1-api-idmp-${TIMESTAMP}.html"
+        --reporters cli,json \
+        --reporter-json-export "${RESULTS_DIR}/l1-api-idmp-${TIMESTAMP}.json"
 
     check_results "${RESULTS_DIR}/l1-api-idmp-${TIMESTAMP}.json"
 }
@@ -126,7 +122,6 @@ check_results() {
         echo "Pass Rate: $((PASSED * 100 / TOTAL))%"
         echo ""
         echo "Report saved to: ${result_file}"
-        echo "HTML Report:     ${result_file%.json}.html"
         echo "════════════════════════════════════════════════════"
         echo ""
 

@@ -1,81 +1,94 @@
-
-name: PR to develop - Smoke Tests
+name: PR - L1 API Smoke Tests
 
 on:
   pull_request:
-    branches: [develop]
-    paths:
-      - 'tests/**'
-      - 'src/**'
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   smoke-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      SLACK_WEBHOOK_QA: ${{ secrets.SLACK_WEBHOOK_QA }}
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: npm
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run Jest Smoke Tests (dev env)
+      - name: Run happy path smoke tests
         id: smoke
-        run: npm run test:smoke
+        run: npm run test:happy
         env:
           API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
           NODE_ENV: test
-        continue-on-error: true
 
-      - name: Database Schema Validation
-        run: npm run test:schema:validate
-        env:
-          API_BASE_URL: https://dev.user-mgmt.greenwheels.africa
-
-      - name: Upload Test Results
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-test-results-pr
-          path: coverage/
+          path: results/
+          if-no-files-found: ignore
           retention-days: 5
 
-      - name: Comment PR with Results
-        if: always()
-        uses: actions/github-script@v6
+      - name: Comment PR with results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        continue-on-error: true
         with:
           script: |
             const fs = require('fs');
-            let comment = '## 🧪 Smoke Tests Results\n';
-            comment += steps.smoke.outcome === 'success'
-              ? '✅ **PASSED** - Ready for review'
-              : '❌ **FAILED** - Fix issues before merge';
-            github.rest.issues.createComment({
+            const path = 'results/l1-api-happy.json';
+            let body = '## Smoke Tests Results\n\nNo Newman result file was created.';
+
+            if (fs.existsSync(path)) {
+              const results = JSON.parse(fs.readFileSync(path, 'utf8'));
+              const stats = results.run.stats.assertions;
+              body = [
+                '## Smoke Tests Results',
+                '',
+                `Passed: ${stats.passed}`,
+                `Failed: ${stats.failed}`,
+                `Total: ${stats.total}`,
+                '',
+                `[View workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
+              ].join('\n');
+            }
+
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: comment
+              body
             });
 
-      - name: Slack Notification (Failure)
-        if: failure()
+      - name: Slack notification on failure
+        if: failure() && env.SLACK_WEBHOOK_QA != ''
         uses: slackapi/slack-github-action@v1
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_QA }}
+          webhook-url: ${{ env.SLACK_WEBHOOK_QA }}
           payload: |
             {
-              "text": "❌ PR #${{ github.event.pull_request.number }} - Smoke Tests Failed",
+              "text": "PR #${{ github.event.pull_request.number }} - L1 API smoke tests failed",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*PR to develop - Smoke Tests Failed*\n*Author:* @${{ github.actor }}\n*Branch:* ${{ github.event.pull_request.head.ref }}\n<${{ github.event.pull_request.html_url }}|View PR> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Test Details>"
+                    "text": "*L1 API smoke tests failed*\n*Author:* @${{ github.actor }}\n*Branch:* ${{ github.event.pull_request.head.ref }}\n<${{ github.event.pull_request.html_url }}|View PR> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Test details>"
                   }
                 }
               ]

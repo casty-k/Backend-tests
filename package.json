@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Layer 1 API Testing for User Management Service (gw-user-mgmt-svc)",
   "scripts": {
-    "test": "newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --reporters cli,json,html",
-    "test:happy": "newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --folder 'L1.1 — Happy Path (14 Endpoints)' --reporters cli,json,html",
-    "test:errors": "newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --folder 'L1.2 — Error Cases (Boundary Tests)' --reporters cli,json,html",
-    "test:idempotency": "newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --folder 'L1.3 — Idempotency Tests' --reporters cli,json,html",
+    "test": "mkdir -p results && newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --reporters cli,json --reporter-json-export results/l1-api-all.json",
+    "test:happy": "mkdir -p results && newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --folder 'L1.1 — Happy Path (14 Endpoints)' --reporters cli,json --reporter-json-export results/l1-api-happy.json",
+    "test:errors": "mkdir -p results && newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --folder 'L1.2 — Error Cases (Boundary Tests)' --reporters cli,json --reporter-json-export results/l1-api-errors.json",
+    "test:idempotency": "mkdir -p results && newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --folder 'L1.3 — Idempotency Tests' --reporters cli,json --reporter-json-export results/l1-api-idempotency.json",
     "test:verbose": "newman run OS2-User-Mgmt-L1-API-Tests.postman_collection.json --environment env.dev.json --reporters cli --verbose"
   },
   "keywords": [
